@@ -478,11 +478,16 @@ function checkPosture(currentLandmarks) {
 
 // Check if user is actually in frame (prevent alerting empty chair)
 function isUserVisible(landmarks) {
-    const MIN_VISIBILITY = 0.65;
-    // Check Nose(0) and Shoulders(11, 12)
-    const keyPoints = [0, 11, 12];
-    const visibleCount = keyPoints.filter(idx => landmarks[idx] && landmarks[idx].visibility > MIN_VISIBILITY).length;
-    return visibleCount >= 2; // At least 2 points must be clear
+    const MIN_VISIBILITY = 0.75; // Increased threshold
+    // Check Nose(0), Shoulders(11, 12), Ears(7,8)
+    // Must have at least ONE shoulder and ONE facial feature with high confidence
+    const shoulders = [11, 12];
+    const face = [0, 7, 8];
+
+    const hasShoulder = shoulders.some(idx => landmarks[idx] && landmarks[idx].visibility > MIN_VISIBILITY);
+    const hasFace = face.some(idx => landmarks[idx] && landmarks[idx].visibility > MIN_VISIBILITY);
+
+    return hasShoulder && hasFace;
 }
 
 function handleUserAway() {
@@ -520,6 +525,11 @@ function stopFlashTitle() {
 }
 
 function triggerAlert() {
+    // FINAL CHECK: If user is not present, DO NOT ALERT.
+    if (statusText.innerText.indexOf("사용자 없음") !== -1) {
+        return;
+    }
+
     const now = Date.now();
     // Reduce cooldown slightly to ensure it fires if user missed it
     if (now - lastAlertTime > ALERT_COOLDOWN) {
