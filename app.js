@@ -54,7 +54,6 @@ const ALERT_COOLDOWN = 3000;
 let userThresholdPercent = 40; // Default 40%
 const UI_SCALE_FACTOR = 350; // Constant for UI display and threshold scaling
 let deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
-const EAR_SHOULDER_THRESHOLD = 0.05; // Specific check for forward head posture
 
 // Audio Context for Beep
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -409,11 +408,12 @@ function normalizeLandmarks(landmarks) {
     // Center point (mid-shoulder)
     const centerX = (leftShoulder.x + rightShoulder.x) / 2;
     const centerY = (leftShoulder.y + rightShoulder.y) / 2;
+    const centerZ = (leftShoulder.z + rightShoulder.z) / 2;
 
     const normalize = (p) => ({
         x: (p.x - centerX) / shoulderWidth,
         y: (p.y - centerY) / shoulderWidth,
-        z: p.z // maintain z depth info roughly
+        z: (p.z - centerZ) / shoulderWidth // Depth relative to shoulder line
     });
 
     return {
@@ -424,7 +424,7 @@ function normalizeLandmarks(landmarks) {
         rightEar: normalize(landmarks[8]),
         leftShoulder: normalize(landmarks[11]),
         rightShoulder: normalize(landmarks[12]),
-        shoulderWidth: shoulderWidth // store original scale reference if needed
+        shoulderWidth: shoulderWidth
     };
 }
 
@@ -432,21 +432,16 @@ function checkPosture(currentLandmarks) {
     const current = normalizeLandmarks(currentLandmarks);
     const ref = referenceLandmarks;
 
-    // Calculate deviation with weights
-    // We want to PENALIZE Y-axis movement (slouching, dropping head)
-    // We want to IGNORE X-axis movement for head (looking left/right at monitors)
-
+    // 1. Position-based deviation (X, Y, Z)
     let totalError = 0;
-
-    // Define weights (Reduced sensitivity)
     const weights = {
-        nose: { x: 0.2, y: 1.5 },        // Reduced Y from 2.0 -> 1.5
-        leftEye: { x: 0.2, y: 1.5 },
-        rightEye: { x: 0.2, y: 1.5 },
-        leftEar: { x: 0.2, y: 1.5 },
-        rightEar: { x: 0.2, y: 1.5 },
-        leftShoulder: { x: 0.8, y: 1.2 }, // Reduced from 1.0/1.5 -> 0.8/1.2
-        rightShoulder: { x: 0.8, y: 1.2 }
+        nose: { x: 0.2, y: 1.5, z: 2.0 },
+        leftEye: { x: 0.2, y: 1.5, z: 1.5 },
+        rightEye: { x: 0.2, y: 1.5, z: 1.5 },
+        leftEar: { x: 0.2, y: 1.5, z: 1.2 },
+        rightEar: { x: 0.2, y: 1.5, z: 1.2 },
+        leftShoulder: { x: 0.8, y: 1.2, z: 0.5 },
+        rightShoulder: { x: 0.8, y: 1.2, z: 0.5 }
     };
 
     const points = Object.keys(weights);
@@ -458,15 +453,32 @@ function checkPosture(currentLandmarks) {
 
         const diffX = Math.abs(p1.x - p2.x);
         const diffY = Math.abs(p1.y - p2.y);
+        const diffZ = Math.abs(p1.z - p2.z);
 
-        // Weighted distance
-        const dist = Math.sqrt(Math.pow(diffX * w.x, 2) + Math.pow(diffY * w.y, 2));
+        // Weighted 3D distance
+        const dist = Math.sqrt(
+            Math.pow(diffX * w.x, 2) +
+            Math.pow(diffY * w.y, 2) +
+            Math.pow(diffZ * w.z, 2)
+        );
         totalError += dist;
     });
 
-    const avgError = totalError / points.length;
-    // Reduced global scaling factor from 500 -> 350 to make it less sensitive overall
-    const deviationPercent = Math.min(100, Math.round(avgError * UI_SCALE_FACTOR));
+    // 2. Scale-based deviation (Distance from screen)
+    // If shoulderWidth increases, user is leaning forward (Turtle Neck)
+    // We penalize leaning forward more heavily than leaning back
+    const scaleRatio = current.shoulderWidth / ref.shoulderWidth;
+    let scaleError = 0;
+    if (scaleRatio > 1.05) { // leaning forward (> 5% closer)
+        scaleError = (scaleRatio - 1.05) * 5.0; // Significant penalty
+    } else if (scaleRatio < 0.90) { // leaning back (> 10% further)
+        scaleError = (0.90 - scaleRatio) * 2.0;
+    }
+
+    const avgBaseError = totalError / points.length;
+    const finalError = avgBaseError + scaleError;
+
+    const deviationPercent = Math.min(100, Math.round(finalError * UI_SCALE_FACTOR));
 
     deviationDisplay.innerText = `${deviationPercent}%`;
 
@@ -475,30 +487,24 @@ function checkPosture(currentLandmarks) {
     const dt = (now - (lastFrameTime || now)) / 1000;
     lastFrameTime = now;
 
-    if (avgError > deviationThreshold) {
+    if (finalError > deviationThreshold) {
         // BAD POSTURE
-        // Increase accumulated bad time
         badPostureDuration += dt;
 
         if (badPostureDuration >= alertDelaySeconds) {
             isBadPosture = true;
-            statusText.innerText = "자세가 구부정합니다!";
+            statusText.innerText = scaleError > 0.1 ? "거북목 주의: 화면과 너무 가깝습니다!" : "자세가 구부정합니다!";
             statusText.style.color = "#ef4444";
-
-            // Trigger alert immediately if enough time passed
             triggerAlert();
         } else {
             const remaining = Math.ceil(alertDelaySeconds - badPostureDuration);
             statusText.innerText = `주의 (${remaining}초 후 알림)`;
-            statusText.style.color = "#f59e0b"; // Warning yellow
-            isBadPosture = false; // Not yet alerted
+            statusText.style.color = "#f59e0b";
+            isBadPosture = false;
         }
     } else {
         // GOOD POSTURE
-        // Rapidly decrease bad time (Decay) to handle flicker but reset quickly
-        // Decay rate 2.0 means: 1 second of good posture erases 2 seconds of bad history
         badPostureDuration -= dt * 2.0;
-
         if (badPostureDuration < 0) badPostureDuration = 0;
 
         isBadPosture = false;
