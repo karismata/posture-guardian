@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>바른 자세 지킴이</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --primary-color: #3b82f6;
+            --accent-color: #10b981;
+            --text-color: #f8fafc;
+            --text-secondary: #94a3b8;
+            --danger-color: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            transition: background-color 0.3s ease;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background: var(--surface-color);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+        }
+
+        /* Video Container */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto 2rem;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            aspect-ratio: 16/9;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            /* Mirror effect */
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            /* match video mirror */
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        button {
+            background-color: var(--surface-color);
+            color: var(--text-color);
+            border: 1px solid var(--text-secondary);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            background-color: #334155;
+            transform: translateY(-1px);
+        }
+
+        button.primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+
+        button.primary:hover {
+            background-color: #2563eb;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        button.accent {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            /* Fixed border color */
+            color: white;
+            /* Ensure text is readable */
+
+        }
+
+        button.accent:hover {
+            background-color: #059669;
+            /* Darker green on hover */
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Status Indicators */
+        .status-panel {
+            background: rgba(15, 23, 42, 0.5);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .status-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .status-good {
+            color: var(--accent-color);
+        }
+
+        .status-bad {
+            color: var(--danger-color);
+        }
+
+        .status-neutral {
+            color: var(--text-secondary);
+        }
+
+        /* Loader */
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary-color);
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: none;
+            /* Hidden by default */
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Overlay alert */
+        .alert-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            box-shadow: inset 0 0 0 0 transparent;
+            transition: box-shadow 0.3s ease;
+            z-index: 999;
+        }
+
+        .alert-active {
+            box-shadow: inset 0 0 100px 20px rgba(239, 68, 68, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="alert-overlay" id="alertOverlay"></div>
+
+    <div class="container">
+        <h1>바른 자세 지킴이</h1>
+        <p class="subtitle">업무 중 건강을 지키세요. 바른 자세를 설정하면 자세가 흐트러질 때 알려드립니다.</p>
+
+        <div
+            style="background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 0.75rem; margin-bottom: 2rem; display: inline-block;">
+            <p
+                style="margin: 0; color: #34d399; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                🔒 <strong>안심하세요!</strong> 귀하의 카메라는 오직 내 컴퓨터에서만 처리되며, 영상은 어디로도 전송되지 않습니다.
+            </p>
+        </div>
+
+        <div class="video-wrapper">
+            <video id="video" playsinline autoplay muted></video>
+            <canvas id="output_canvas"></canvas>
+            <div id="loadingMessage"
+                style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); display: flex; flex-direction:column; align-items:center; gap:10px;">
+                <div class="loader" id="loader" style="display:block;"></div>
+                <span style="font-size:0.9rem; color: #cbd5e1;">AI 모델 로딩 중...</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="primary">
+                📷 카메라 시작
+            </button>
+            <button id="stopBtn" class="danger" disabled
+                style="background-color: #ef4444; border-color: #ef4444; color: white;">
+                � 카메라 끄기
+            </button>
+            <button id="setRefBtn" class="accent" disabled>
+                📌 현재 자세를 기준점으로 설정
+            </button>
+            <button id="testNotiBtn"
+                style="border: 1px solid var(--text-secondary); color: var(--text-secondary); background: transparent;">
+                🔔 알림 테스트
+            </button>
+        </div>
+
+        <div style="margin-bottom: 1.5rem; width: 100%; max-width: 400px; margin-left: auto; margin-right: auto;">
+            <label for="thresholdRange"
+                style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                민감도 설정 (이탈 허용 범위: <span id="thresholdValue">40</span>%)
+            </label>
+            <input type="range" id="thresholdRange" min="10" max="100" value="40" step="5"
+                style="width: 100%; cursor: pointer;">
+
+            <label for="delayRange"
+                style="display: block; margin-top: 1.5rem; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
+                알림 대기 시간 (<span id="delayValue">3</span>초 유지 시 알림)
+            </label>
+            <input type="range" id="delayRange" min="0" max="15" value="3" step="1"
+                style="width: 100%; cursor: pointer;">
+        </div>
+
+        <div class="status-panel">
+            <div class="status-item">
+                <span class="status-label">현재 상태</span>
+                <span class="status-value status-neutral" id="statusText">대기 중...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">자세 이탈률</span>
+                <span class="status-value" id="deviationValue">0%</span>
+            </div>
+        </div>
+
+        <audio id="alertSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+            preload="auto"></audio>
+    </div>
+
+    <!-- Load MediaPipe Pose -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        crossorigin="anonymous"></script>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
