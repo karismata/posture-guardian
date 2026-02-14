@@ -548,7 +548,7 @@ function triggerAlert() {
             try {
                 // Close previous if exists? No, spam is better for posture
                 new Notification("⚠️ 자세 경고", {
-                    body: "자세가 구부정합니다! 3초 이상 유지되었습니다.",
+                    body: "자세가 구부정합니다! 바른 자세를 취해주세요.",
                     silent: true, // We play our own sound
                     requireInteraction: false,
                     tag: 'posture-alert',
