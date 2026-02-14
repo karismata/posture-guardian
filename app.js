@@ -52,7 +52,8 @@ let lastFrameTime = 0;
 let alertDelaySeconds = 3; // Default 3s
 const ALERT_COOLDOWN = 3000;
 let userThresholdPercent = 40; // Default 40%
-let deviationThreshold = userThresholdPercent / 500; // Calculated threshold
+const UI_SCALE_FACTOR = 350; // Constant for UI display and threshold scaling
+let deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
 const EAR_SHOULDER_THRESHOLD = 0.05; // Specific check for forward head posture
 
 // Audio Context for Beep
@@ -234,11 +235,39 @@ function attachTestNoti() {
     }
 }
 
-// Ensure DOM is ready
+// Settings Persistence
+function loadSettings() {
+    const savedThreshold = localStorage.getItem('posture_threshold');
+    const savedDelay = localStorage.getItem('posture_delay');
+
+    if (savedThreshold) {
+        userThresholdPercent = parseInt(savedThreshold);
+        thresholdRange.value = userThresholdPercent;
+        thresholdValueDisplay.innerText = userThresholdPercent;
+        deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
+    }
+
+    if (savedDelay) {
+        alertDelaySeconds = parseInt(savedDelay);
+        if (delayRange) delayRange.value = alertDelaySeconds;
+        if (delayValueDisplay) delayValueDisplay.innerText = alertDelaySeconds;
+    }
+}
+
+function saveSettings() {
+    localStorage.setItem('posture_threshold', userThresholdPercent);
+    localStorage.setItem('posture_delay', alertDelaySeconds);
+}
+
+// Ensure DOM is ready and load settings
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', attachTestNoti);
+    document.addEventListener('DOMContentLoaded', () => {
+        attachTestNoti();
+        loadSettings();
+    });
 } else {
     attachTestNoti();
+    loadSettings();
 }
 
 stopBtn.addEventListener('click', () => {
@@ -276,7 +305,8 @@ stopBtn.addEventListener('click', () => {
 thresholdRange.addEventListener('input', (e) => {
     userThresholdPercent = parseInt(e.target.value);
     thresholdValueDisplay.innerText = userThresholdPercent;
-    deviationThreshold = userThresholdPercent / 500;
+    deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
+    saveSettings();
 });
 
 const delayRange = document.getElementById('delayRange');
@@ -286,6 +316,7 @@ if (delayRange) {
     delayRange.addEventListener('input', (e) => {
         alertDelaySeconds = parseInt(e.target.value);
         delayValueDisplay.innerText = alertDelaySeconds;
+        saveSettings();
     });
 }
 
@@ -407,15 +438,15 @@ function checkPosture(currentLandmarks) {
 
     let totalError = 0;
 
-    // Define weights
+    // Define weights (Reduced sensitivity)
     const weights = {
-        nose: { x: 0.2, y: 2.0 },        // Low X sensitivity (looking around), High Y (dropping head)
-        leftEye: { x: 0.2, y: 2.0 },
-        rightEye: { x: 0.2, y: 2.0 },
-        leftEar: { x: 0.2, y: 2.0 },
-        rightEar: { x: 0.2, y: 2.0 },
-        leftShoulder: { x: 1.0, y: 1.5 }, // Shoulders shouldn't move much
-        rightShoulder: { x: 1.0, y: 1.5 }
+        nose: { x: 0.2, y: 1.5 },        // Reduced Y from 2.0 -> 1.5
+        leftEye: { x: 0.2, y: 1.5 },
+        rightEye: { x: 0.2, y: 1.5 },
+        leftEar: { x: 0.2, y: 1.5 },
+        rightEar: { x: 0.2, y: 1.5 },
+        leftShoulder: { x: 0.8, y: 1.2 }, // Reduced from 1.0/1.5 -> 0.8/1.2
+        rightShoulder: { x: 0.8, y: 1.2 }
     };
 
     const points = Object.keys(weights);
@@ -434,7 +465,8 @@ function checkPosture(currentLandmarks) {
     });
 
     const avgError = totalError / points.length;
-    const deviationPercent = Math.min(100, Math.round(avgError * 500)); // Scale factor for display
+    // Reduced global scaling factor from 500 -> 350 to make it less sensitive overall
+    const deviationPercent = Math.min(100, Math.round(avgError * UI_SCALE_FACTOR));
 
     deviationDisplay.innerText = `${deviationPercent}%`;
 
