@@ -48,6 +48,8 @@ let referenceLandmarks = null;
 let isMonitoring = false;
 let lastAlertTime = 0;
 let badPostureStartTime = 0;
+let recoveryStartTime = 0; // Buffer for good posture
+const RECOVERY_TIME = 1500; // 1.5 seconds to confirm "Good" posture
 let alertDelaySeconds = 3; // Default 3s
 const ALERT_COOLDOWN = 3000;
 let userThresholdPercent = 40; // Default 40%
@@ -326,9 +328,10 @@ function onResults(results) {
                 { color: 'rgba(255, 255, 255, 0.3)', lineWidth: 2 });
         }
 
-        // Visual indicator of delay timer (turn landmarks yellow/orange)
+        const isUserPresent = isUserVisible(results.poseLandmarks);
+
         let landmarkColor = '#3b82f6';
-        if (isMonitoring) {
+        if (isMonitoring && isUserPresent) {
             if (isBadPosture) {
                 landmarkColor = '#ef4444'; // Red (Alerting)
             } else if (badPostureStartTime > 0) {
@@ -346,7 +349,16 @@ function onResults(results) {
         }
 
         if (isMonitoring && referenceLandmarks) {
-            checkPosture(results.poseLandmarks);
+            if (isUserPresent) {
+                checkPosture(results.poseLandmarks);
+            } else {
+                handleUserAway();
+            }
+        }
+    } else {
+        // No landmarks at all (completely empty frame)
+        if (isMonitoring) {
+            handleUserAway();
         }
     }
     canvasCtx.restore();
@@ -431,6 +443,9 @@ function checkPosture(currentLandmarks) {
     const now = Date.now();
 
     if (avgError > deviationThreshold) {
+        // BAD POSTURE
+        recoveryStartTime = 0; // Cancel any recovery
+
         if (badPostureStartTime === 0) {
             badPostureStartTime = now;
         }
@@ -451,10 +466,64 @@ function checkPosture(currentLandmarks) {
             isBadPosture = false; // Not yet alerted
         }
     } else {
-        isBadPosture = false;
-        badPostureStartTime = 0; // Reset timer
-        statusText.innerText = "바른 자세입니다";
-        statusText.style.color = "#10b981";
+        // GOOD POSTURE
+        // Hysteresis: Don't reset immediately. Wait for RECOVERY_TIME.
+
+        if (badPostureStartTime > 0) {
+            // We were in bad posture. Are we recovering?
+            if (recoveryStartTime === 0) {
+                recoveryStartTime = now;
+            }
+
+            const recoveryDuration = now - recoveryStartTime;
+
+            if (recoveryDuration >= RECOVERY_TIME) {
+                // Fully recovered
+                isBadPosture = false;
+                badPostureStartTime = 0;
+                recoveryStartTime = 0;
+                statusText.innerText = "바른 자세입니다";
+                statusText.style.color = "#10b981";
+                clearAlert();
+            } else {
+                // In recovery buffer - keep showing warning but maybe different text?
+                // Or just keep silent.
+                // Better to visually show "Good" but keep inner timer pending.
+                statusText.innerText = "바른 자세입니다";
+                statusText.style.color = "#10b981";
+                // Note: We do NOT clear alertOverlay here immediately to avoid flickering red if they dip back
+                // But user prefers green if they sit up.
+                clearAlert();
+            }
+        } else {
+            // Stable good posture
+            isBadPosture = false;
+            badPostureStartTime = 0;
+            recoveryStartTime = 0;
+            statusText.innerText = "바른 자세입니다";
+            statusText.style.color = "#10b981";
+            clearAlert();
+        }
+    }
+}
+
+// Check if user is actually in frame (prevent alerting empty chair)
+function isUserVisible(landmarks) {
+    const MIN_VISIBILITY = 0.65;
+    // Check Nose(0) and Shoulders(11, 12)
+    const keyPoints = [0, 11, 12];
+    const visibleCount = keyPoints.filter(idx => landmarks[idx] && landmarks[idx].visibility > MIN_VISIBILITY).length;
+    return visibleCount >= 2; // At least 2 points must be clear
+}
+
+function handleUserAway() {
+    isBadPosture = false;
+    badPostureStartTime = 0;
+    recoveryStartTime = 0; // Reset recovery timer too
+    if (statusText.innerText.indexOf("사용자 없음") === -1) {
+        statusText.innerText = "사용자 없음 (알림 일시정지)";
+        statusText.style.color = "var(--text-secondary)";
+        deviationDisplay.innerText = "-";
         clearAlert();
     }
 }
