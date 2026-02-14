@@ -79,6 +79,102 @@ function playBeep() {
 
 const testNotiBtn = document.getElementById('testNotiBtn');
 
+// Silent Audio to prevent browser throttling in background
+let keepAliveOscillator = null;
+
+function startKeepAliveAudio() {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Create a silent oscillator
+    keepAliveOscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.001; // Nearly silent
+    keepAliveOscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    keepAliveOscillator.start();
+}
+
+function stopKeepAliveAudio() {
+    if (keepAliveOscillator) {
+        keepAliveOscillator.stop();
+        keepAliveOscillator = null;
+    }
+}
+
+// Custom Loop State
+let animationFrameId = null;
+let backgroundIntervalId = null;
+let isVideoPlaying = false;
+
+// Web Worker for Precise Background Timing
+const workerBlob = new Blob([`
+    let intervalId;
+    self.onmessage = function(e) {
+        if (e.data === 'start') {
+            intervalId = setInterval(() => {
+                postMessage('tick');
+            }, 1000); // 1 FPS in background is enough
+        } else if (e.data === 'stop') {
+            clearInterval(intervalId);
+        }
+    };
+`], { type: 'application/javascript' });
+
+const timerWorker = new Worker(URL.createObjectURL(workerBlob));
+
+timerWorker.onmessage = () => {
+    if (isVideoPlaying && document.hidden) {
+        processVideoFrame();
+    }
+};
+
+async function processVideoFrame() {
+    if (!isVideoPlaying) return;
+
+    // Process frame
+    await pose.send({ image: videoElement });
+
+    // Schedule next frame ONLY if visible
+    // If hidden, the Web Worker drives the loop
+    if (!document.hidden) {
+        requestAnimationFrame(processVideoFrame);
+    }
+}
+
+async function startCameraAndLoop() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 1280, height: 720 }
+        });
+        videoElement.srcObject = stream;
+
+        await new Promise((resolve) => {
+            videoElement.onloadedmetadata = () => {
+                videoElement.play();
+                resolve();
+            };
+        });
+
+        isVideoPlaying = true;
+        // Start visible loop
+        processVideoFrame();
+
+        // Start background worker loop
+        timerWorker.postMessage('start');
+
+        startKeepAliveAudio(); // Important for background
+
+    } catch (e) {
+        console.error("Camera error:", e);
+        alert("카메라 시작 실패: " + e.message);
+        startBtn.disabled = false;
+        loader.style.display = 'none';
+        loadingMessage.style.display = 'none';
+        startBtn.innerText = "📷 카메라 시작";
+    }
+}
+
 startBtn.addEventListener('click', () => {
     // 1. Ask for notification permission immediately on click
     if ("Notification" in window) {
@@ -95,14 +191,8 @@ startBtn.addEventListener('click', () => {
     loader.style.display = 'block';
     loadingMessage.style.display = 'flex';
 
-    camera = new Camera(videoElement, {
-        onFrame: async () => {
-            await pose.send({ image: videoElement });
-        },
-        width: 1280,
-        height: 720
-    });
-    camera.start();
+    // Start Custom Loop instead of Camera utils
+    startCameraAndLoop();
     stopBtn.disabled = false;
 });
 
@@ -151,16 +241,23 @@ if (document.readyState === 'loading') {
 }
 
 stopBtn.addEventListener('click', () => {
-    if (camera) {
-        camera.stop();
-        // MediaPipe camera utils doesn't expose a clean stop sometimes, let's try just stopping video
-        const stream = videoElement.srcObject;
-        if (stream) {
-            const tracks = stream.getTracks();
-            tracks.forEach(track => track.stop());
-            videoElement.srcObject = null;
-        }
+    // Stop custom loop flag
+    isVideoPlaying = false;
+
+    // Stop worker
+    timerWorker.postMessage('stop');
+
+    // Stop streams
+    const stream = videoElement.srcObject;
+    if (stream) {
+        const tracks = stream.getTracks();
+        tracks.forEach(track => track.stop());
+        videoElement.srcObject = null;
     }
+
+    // Stop audio keep-alive
+    stopKeepAliveAudio();
+
     isMonitoring = false;
     startBtn.disabled = false;
     startBtn.innerText = "📷 카메라 시작";
@@ -344,6 +441,8 @@ function checkPosture(currentLandmarks) {
             isBadPosture = true;
             statusText.innerText = "자세가 구부정합니다!";
             statusText.style.color = "#ef4444";
+
+            // Trigger alert immediately if enough time passed
             triggerAlert();
         } else {
             const remaining = Math.ceil(alertDelaySeconds - duration);
@@ -384,9 +483,11 @@ function stopFlashTitle() {
 }
 
 function triggerAlert() {
-    alertOverlay.style.boxShadow = "inset 0 0 100px 50px rgba(239, 68, 68, 0.6)";
     const now = Date.now();
+    // Reduce cooldown slightly to ensure it fires if user missed it
     if (now - lastAlertTime > ALERT_COOLDOWN) {
+
+        // Always play beep
         playBeep();
 
         // 1. Flash Title (Visual fallback for taskbar)
@@ -395,21 +496,29 @@ function triggerAlert() {
         }
 
         // 2. System Notification
-        // Removed document.hidden check so it alerts even if window is visible (good for testing)
+        // Force notification without condition on visibility
         if ("Notification" in window && Notification.permission === "granted") {
             try {
+                // Close previous if exists? No, spam is better for posture
                 new Notification("⚠️ 자세 경고", {
-                    body: "자세가 구부정합니다! 허리를 펴세요.",
-                    silent: true,
-                    icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png' // Medical pose icon
+                    body: "자세가 구부정합니다! 3초 이상 유지되었습니다.",
+                    silent: true, // We play our own sound
+                    requireInteraction: false,
+                    tag: 'posture-alert',
+                    renotify: true, // Force new alert even if tag matches
+                    icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
                 });
             } catch (e) {
                 console.error("Notification failed", e);
             }
         }
 
+        // Update alert time
         lastAlertTime = now;
     }
+
+    // Ensure overlay is shown
+    alertOverlay.style.boxShadow = "inset 0 0 100px 50px rgba(239, 68, 68, 0.6)";
 }
 
 function clearAlert() {
