@@ -435,13 +435,15 @@ function checkPosture(currentLandmarks) {
     // 1. Position-based deviation (X, Y, Z)
     let totalError = 0;
     const weights = {
-        nose: { x: 0.2, y: 1.2, z: 1.5 }, // Reduced y(1.5->1.2), z(2.0->1.5)
-        leftEye: { x: 0.2, y: 1.2, z: 1.2 }, // Reduced y(1.5->1.2), z(1.5->1.2)
-        rightEye: { x: 0.2, y: 1.2, z: 1.2 }, // Reduced y(1.5->1.2), z(1.5->1.2)
-        leftEar: { x: 0.2, y: 1.2, z: 1.0 }, // Reduced y(1.5->1.2), z(1.2->1.0)
-        rightEar: { x: 0.2, y: 1.2, z: 1.0 }, // Reduced y(1.5->1.2), z(1.2->1.0)
-        leftShoulder: { x: 0.8, y: 1.0, z: 0.5 }, // Reduced y(1.2->1.0)
-        rightShoulder: { x: 0.8, y: 1.0, z: 0.5 } // Reduced y(1.2->1.0)
+        // x(좌우) 가중치를 대폭 낮춤 (회전/이동 무시)
+        // z(앞뒤) 특히 코의 가중치를 높여 거북목 감지 강화
+        nose: { x: 0.05, y: 1.0, z: 2.8 },
+        leftEye: { x: 0.05, y: 1.0, z: 1.2 },
+        rightEye: { x: 0.05, y: 1.0, z: 1.2 },
+        leftEar: { x: 0.05, y: 1.0, z: 0.8 },
+        rightEar: { x: 0.05, y: 1.0, z: 0.8 },
+        leftShoulder: { x: 0.3, y: 0.8, z: 0.3 },
+        rightShoulder: { x: 0.3, y: 0.8, z: 0.3 }
     };
 
     const points = Object.keys(weights);
@@ -469,10 +471,10 @@ function checkPosture(currentLandmarks) {
     // We penalize leaning forward more heavily than leaning back
     const scaleRatio = current.shoulderWidth / ref.shoulderWidth;
     let scaleError = 0;
-    if (scaleRatio > 1.12) { // leaning forward (> 12% closer) - was 1.05
-        scaleError = (scaleRatio - 1.12) * 3.0; // Penalty reduced from 5.0
-    } else if (scaleRatio < 0.85) { // leaning back (> 15% further) - was 0.90
-        scaleError = (0.85 - scaleRatio) * 1.5; // Penalty reduced from 2.0
+    if (scaleRatio > 1.05) { // leaning forward (> 5% closer) - re-tightened to 1.05
+        scaleError = (scaleRatio - 1.05) * 8.0; // Penalty significantly increased (was 3.0/5.0)
+    } else if (scaleRatio < 0.88) { // leaning back (> 12% further) - slightly adjusted
+        scaleError = (0.88 - scaleRatio) * 2.0;
     }
 
     const avgBaseError = totalError / points.length;
