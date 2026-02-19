@@ -51,9 +51,8 @@ let badPostureDuration = 0; // Accumulated bad posture time in seconds
 let lastFrameTime = 0;
 let alertDelaySeconds = 3; // Default 3s
 const ALERT_COOLDOWN = 3000;
-let userThresholdPercent = 60; // Default 60% (Lowered sensitivity)
-const UI_SCALE_FACTOR = 350; // Constant for UI display and threshold scaling
-let deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
+let userThresholdPercent = 60; // Default 60%
+// Deviation threshold is now handled dynamically in checkPosture
 
 // Audio Context for Beep
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -304,7 +303,6 @@ stopBtn.addEventListener('click', () => {
 thresholdRange.addEventListener('input', (e) => {
     userThresholdPercent = parseInt(e.target.value);
     thresholdValueDisplay.innerText = userThresholdPercent;
-    deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
     saveSettings();
 });
 
@@ -471,25 +469,39 @@ function checkPosture(currentLandmarks) {
     // We penalize leaning forward more heavily than leaning back
     const scaleRatio = current.shoulderWidth / ref.shoulderWidth;
     let scaleError = 0;
-    if (scaleRatio > 1.05) { // leaning forward (> 5% closer) - re-tightened to 1.05
-        scaleError = (scaleRatio - 1.05) * 8.0; // Penalty significantly increased (was 3.0/5.0)
-    } else if (scaleRatio < 0.88) { // leaning back (> 12% further) - slightly adjusted
-        scaleError = (0.88 - scaleRatio) * 2.0;
+    if (scaleRatio > 1.07) { // 7% forward lean before penalty
+        scaleError = (scaleRatio - 1.07) * 4.5; // Penalty reduced from 8.0 to 4.5
+    } else if (scaleRatio < 0.85) {
+        scaleError = (0.85 - scaleRatio) * 1.5;
     }
 
     const avgBaseError = totalError / points.length;
-    const finalError = avgBaseError + scaleError;
+    const rawFinalError = avgBaseError + scaleError;
 
-    const deviationPercent = Math.min(100, Math.round(finalError * UI_SCALE_FACTOR));
+    // 3. Smoothing (Exponential Moving Average) to prevent jitter
+    // If smoothedError doesn't exist yet, initialize it
+    if (typeof this.smoothedError === 'undefined') {
+        this.smoothedError = rawFinalError;
+    } else {
+        const smoothingFactor = 0.15; // Lower = smoother/slower, Higher = faster/jumpier
+        this.smoothedError = (rawFinalError * smoothingFactor) + (this.smoothedError * (1 - smoothingFactor));
+    }
+
+    const finalError = this.smoothedError;
+
+    // Reduced UI_SCALE_FACTOR (350 -> 250) to make the meter less sensitive to small movements
+    const DEV_UI_SCALE = 250;
+    const deviationPercent = Math.min(100, Math.round(finalError * DEV_UI_SCALE));
 
     deviationDisplay.innerText = `${deviationPercent}%`;
 
-    // Check thresholds
+    // Check thresholds (using smoothed value)
     const now = Date.now();
     const dt = (now - (lastFrameTime || now)) / 1000;
     lastFrameTime = now;
 
-    if (finalError > deviationThreshold) {
+    // Use a slightly adjusted threshold check for the smoothed value
+    if (finalError > (userThresholdPercent / DEV_UI_SCALE)) {
         // BAD POSTURE
         badPostureDuration += dt;
 
