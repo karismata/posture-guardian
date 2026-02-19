@@ -51,7 +51,7 @@ let badPostureDuration = 0; // Accumulated bad posture time in seconds
 let lastFrameTime = 0;
 let alertDelaySeconds = 3; // Default 3s
 const ALERT_COOLDOWN = 3000;
-let userThresholdPercent = 40; // Default 40%
+let userThresholdPercent = 60; // Default 60% (Lowered sensitivity)
 const UI_SCALE_FACTOR = 350; // Constant for UI display and threshold scaling
 let deviationThreshold = userThresholdPercent / UI_SCALE_FACTOR;
 
@@ -435,13 +435,13 @@ function checkPosture(currentLandmarks) {
     // 1. Position-based deviation (X, Y, Z)
     let totalError = 0;
     const weights = {
-        nose: { x: 0.2, y: 1.5, z: 2.0 },
-        leftEye: { x: 0.2, y: 1.5, z: 1.5 },
-        rightEye: { x: 0.2, y: 1.5, z: 1.5 },
-        leftEar: { x: 0.2, y: 1.5, z: 1.2 },
-        rightEar: { x: 0.2, y: 1.5, z: 1.2 },
-        leftShoulder: { x: 0.8, y: 1.2, z: 0.5 },
-        rightShoulder: { x: 0.8, y: 1.2, z: 0.5 }
+        nose: { x: 0.2, y: 1.2, z: 1.5 }, // Reduced y(1.5->1.2), z(2.0->1.5)
+        leftEye: { x: 0.2, y: 1.2, z: 1.2 }, // Reduced y(1.5->1.2), z(1.5->1.2)
+        rightEye: { x: 0.2, y: 1.2, z: 1.2 }, // Reduced y(1.5->1.2), z(1.5->1.2)
+        leftEar: { x: 0.2, y: 1.2, z: 1.0 }, // Reduced y(1.5->1.2), z(1.2->1.0)
+        rightEar: { x: 0.2, y: 1.2, z: 1.0 }, // Reduced y(1.5->1.2), z(1.2->1.0)
+        leftShoulder: { x: 0.8, y: 1.0, z: 0.5 }, // Reduced y(1.2->1.0)
+        rightShoulder: { x: 0.8, y: 1.0, z: 0.5 } // Reduced y(1.2->1.0)
     };
 
     const points = Object.keys(weights);
@@ -469,10 +469,10 @@ function checkPosture(currentLandmarks) {
     // We penalize leaning forward more heavily than leaning back
     const scaleRatio = current.shoulderWidth / ref.shoulderWidth;
     let scaleError = 0;
-    if (scaleRatio > 1.05) { // leaning forward (> 5% closer)
-        scaleError = (scaleRatio - 1.05) * 5.0; // Significant penalty
-    } else if (scaleRatio < 0.90) { // leaning back (> 10% further)
-        scaleError = (0.90 - scaleRatio) * 2.0;
+    if (scaleRatio > 1.12) { // leaning forward (> 12% closer) - was 1.05
+        scaleError = (scaleRatio - 1.12) * 3.0; // Penalty reduced from 5.0
+    } else if (scaleRatio < 0.85) { // leaning back (> 15% further) - was 0.90
+        scaleError = (0.85 - scaleRatio) * 1.5; // Penalty reduced from 2.0
     }
 
     const avgBaseError = totalError / points.length;

@@ -49,6 +49,7 @@
             margin-bottom: 0.5rem;
             background: linear-gradient(to right, #60a5fa, #34d399);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
@@ -276,9 +277,9 @@
         <div style="margin-bottom: 1.5rem; width: 100%; max-width: 400px; margin-left: auto; margin-right: auto;">
             <label for="thresholdRange"
                 style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.9rem;">
-                민감도 설정 (이탈 허용 범위: <span id="thresholdValue">40</span>%)
+                민감도 설정 (이탈 허용 범위: <span id="thresholdValue">60</span>%)
             </label>
-            <input type="range" id="thresholdRange" min="10" max="100" value="40" step="5"
+            <input type="range" id="thresholdRange" min="10" max="100" value="60" step="5"
                 style="width: 100%; cursor: pointer;">
 
             <label for="delayRange"
